@@ -1,7 +1,8 @@
 import os
 
-from examples.cortex.predictor.tf import TensorFlowPredictor
+from predictor.tf import TensorFlowPredictor
 from zenml.datasources import CSVDatasource
+from zenml.exceptions import AlreadyExistsException
 from zenml.pipelines import TrainingPipeline
 from zenml.repo import ArtifactStore
 from zenml.steps.deployer import CortexDeployer
@@ -9,7 +10,7 @@ from zenml.steps.evaluator import TFMAEvaluator
 from zenml.steps.preprocesser import StandardPreprocesser
 from zenml.steps.split import RandomSplit
 from zenml.steps.trainer import TFFeedForwardTrainer
-from zenml.exceptions import AlreadyExistsException
+from zenml.utils.naming_utils import transformed_label_name
 
 GCP_BUCKET = os.getenv('GCP_BUCKET')
 assert GCP_BUCKET
@@ -35,7 +36,7 @@ training_pipeline.add_datasource(ds)
 
 # Add a split
 training_pipeline.add_split(RandomSplit(
-    split_map={'eval': 0.3, 'train': 0.7}))
+    split_map={'train': 0.7, 'eval': 0.2, 'test': 0.1}))
 
 # Add a preprocessing unit
 training_pipeline.add_preprocesser(
@@ -58,9 +59,9 @@ training_pipeline.add_trainer(TFFeedForwardTrainer(
 # Add an evaluator
 training_pipeline.add_evaluator(
     TFMAEvaluator(slices=[['has_diabetes']],
-                  metrics={'has_diabetes': ['binary_crossentropy',
-                                            'binary_accuracy']}))
-
+                  metrics={transformed_label_name('has_diabetes'): [
+                      'binary_crossentropy',
+                      'binary_accuracy']}))
 # Add cortex deployer
 api_config = {
     "name": CORTEX_MODEL_NAME,

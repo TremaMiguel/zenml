@@ -5,6 +5,7 @@ import os
 
 from zenml.backends.orchestrator import OrchestratorAWSBackend
 from zenml.datasources import CSVDatasource
+from zenml.exceptions import AlreadyExistsException
 from zenml.metadata import MySQLMetadataStore
 from zenml.pipelines import TrainingPipeline
 from zenml.repo import ArtifactStore, Repository
@@ -12,7 +13,7 @@ from zenml.steps.evaluator import TFMAEvaluator
 from zenml.steps.preprocesser import StandardPreprocesser
 from zenml.steps.split import RandomSplit
 from zenml.steps.trainer import TFFeedForwardTrainer
-from zenml.exceptions import AlreadyExistsException
+from zenml.utils.naming_utils import transformed_label_name
 
 # Get the configuration for the artifact store and the metadata store which
 # should be accessible from the VM
@@ -48,7 +49,7 @@ training_pipeline.add_datasource(ds)
 
 # Add a split
 training_pipeline.add_split(RandomSplit(
-    split_map={'train': 0.6, 'eval': 0.4}))
+    split_map={'train': 0.7, 'eval': 0.2, 'test': 0.1}))
 
 # Add a preprocessing unit
 training_pipeline.add_preprocesser(
@@ -71,8 +72,9 @@ training_pipeline.add_trainer(TFFeedForwardTrainer(
 # Add an evaluator
 training_pipeline.add_evaluator(
     TFMAEvaluator(slices=[['has_diabetes']],
-                  metrics={'has_diabetes': ['binary_crossentropy',
-                                            'binary_accuracy']}))
+                  metrics={transformed_label_name('has_diabetes'): [
+                      'binary_crossentropy',
+                      'binary_accuracy']}))
 
 # Define the metadata store
 metadata_store = MySQLMetadataStore(

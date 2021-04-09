@@ -19,30 +19,28 @@ from pathlib import Path
 from typing import Dict, Text, Any, List
 
 import tensorflow as tf
-from tfx.components.evaluator.component import Evaluator
 from tfx.components.pusher.component import Pusher
 from tfx.components.schema_gen.component import SchemaGen
 from tfx.components.statistics_gen.component import StatisticsGen
-from tfx.components.trainer.component import Trainer
 from tfx.components.transform.component import Transform
-from tfx.proto import trainer_pb2
 
-from zenml.backends.training import TrainingBaseBackend
-from zenml.components import DataGen, Sequencer, SplitGen
-from zenml.pipelines import BasePipeline
-from zenml.standards import standard_keys as keys
-from zenml.steps.deployer import BaseDeployerStep
-from zenml.steps.evaluator import TFMAEvaluator
-from zenml.steps.preprocesser import BasePreprocesserStep
-from zenml.steps.sequencer import BaseSequencerStep
-from zenml.steps.split import BaseSplit
-from zenml.steps.trainer import BaseTrainerStep
-from zenml.utils import path_utils
 from zenml import constants
+from zenml.backends.training import TrainingBaseBackend
+from zenml.components import DataGen, Sequencer, SplitGen, Trainer, Evaluator
 from zenml.enums import GDPComponent
 from zenml.exceptions import DoesNotExistException, \
     PipelineNotSucceededException
 from zenml.logger import get_logger
+from zenml.pipelines import BasePipeline
+from zenml.standards import standard_keys as keys
+from zenml.steps.deployer import BaseDeployerStep
+from zenml.steps.evaluator import BaseEvaluatorStep
+from zenml.steps.preprocesser import BasePreprocesserStep
+from zenml.steps.preprocesser.base_preprocesser import build_split_mapping
+from zenml.steps.sequencer import BaseSequencerStep
+from zenml.steps.split import BaseSplit
+from zenml.steps.trainer import BaseTrainerStep
+from zenml.utils import path_utils
 from zenml.utils.post_training.post_training_utils import \
     evaluate_single_pipeline, view_statistics, view_schema, detect_anomalies
 from zenml.utils.post_training.post_training_utils import \
@@ -162,10 +160,14 @@ class TrainingPipeline(BasePipeline):
         #################
         # PREPROCESSING #
         #################
+        split_mapping = build_split_mapping(
+            steps[keys.TrainingSteps.PREPROCESSER][keys.StepKeys.ARGS])
+
         transform = Transform(
             preprocessing_fn=constants.PREPROCESSING_FN,
             examples=datapoints,
             schema=schema,
+            splits_config=split_mapping,
             custom_config=steps[keys.TrainingSteps.PREPROCESSER]
         ).with_id(GDPComponent.Transform.name)
 
@@ -193,8 +195,6 @@ class TrainingPipeline(BasePipeline):
             transform_graph=transform.outputs.transform_graph,
             run_fn=constants.TRAINER_FN,
             schema=schema,
-            train_args=trainer_pb2.TrainArgs(),
-            eval_args=trainer_pb2.EvalArgs(),
             **training_kwargs
         ).with_id(GDPComponent.Trainer.name)
 
@@ -204,22 +204,27 @@ class TrainingPipeline(BasePipeline):
         # EVALUATOR #
         #############
         if keys.TrainingSteps.EVALUATOR in steps:
-            from zenml.utils import source_utils
-            eval_module = '.'.join(
-                constants.EVALUATOR_MODULE_FN.split('.')[:-1])
-            eval_module_file = constants.EVALUATOR_MODULE_FN.split('.')[-1]
-            abs_path = source_utils.get_absolute_path_from_module(eval_module)
-            custom_extractor_path = os.path.join(abs_path,
-                                                 eval_module_file) + '.py'
-            eval_step: TFMAEvaluator = TFMAEvaluator.from_config(
-                steps[keys.TrainingSteps.EVALUATOR])
-            eval_config = eval_step.build_eval_config()
-            evaluator = Evaluator(
-                examples=transform.outputs.transformed_examples,
-                model=trainer.outputs.model,
-                eval_config=eval_config,
-                module_file=custom_extractor_path,
-            ).with_id(GDPComponent.Evaluator.name)
+            evaluator_config = steps[keys.TrainingSteps.EVALUATOR]
+            # TODO [MEDIUM]: This check should ideally not happen here,
+            #  integrate it into the component
+            eval_source = evaluator_config['source'].split('@')[0]
+            if eval_source == 'zenml.steps.evaluator.agnostic_evaluator.AgnosticEvaluator':
+                evaluator = Evaluator(
+                    source=evaluator_config[keys.StepKeys.SOURCE],
+                    source_args=evaluator_config[keys.StepKeys.ARGS],
+                    examples=trainer.outputs.test_results,
+                ).with_id(GDPComponent.Evaluator.name)
+            elif eval_source == 'zenml.steps.evaluator.tfma_evaluator.TFMAEvaluator':
+                evaluator = Evaluator(
+                    source=evaluator_config[keys.StepKeys.SOURCE],
+                    source_args=evaluator_config[keys.StepKeys.ARGS],
+                    examples=transform.outputs.transformed_examples,
+                    model=trainer.outputs.model,
+                ).with_id(GDPComponent.Evaluator.name)
+            else:
+                raise ValueError(
+                    'Please use either the built-in TFMAEvaluator '
+                    'or the AgnosticEvaluator')
             component_list.append(evaluator)
 
         ###########
@@ -251,19 +256,20 @@ class TrainingPipeline(BasePipeline):
     def add_trainer(self, trainer_step: BaseTrainerStep):
         self.steps_dict[keys.TrainingSteps.TRAINER] = trainer_step
 
-    def add_evaluator(self, evaluator_step: TFMAEvaluator):
+    def add_evaluator(self, evaluator_step: BaseEvaluatorStep):
         self.steps_dict[keys.TrainingSteps.EVALUATOR] = evaluator_step
 
     def add_deployment(self, deployment_step: BaseDeployerStep):
         self.steps_dict[keys.TrainingSteps.DEPLOYER] = deployment_step
 
-    def view_statistics(self, magic: bool = False):
+    def view_statistics(self, magic: bool = False, port: int = 0):
         """
         View statistics for training pipeline in HTML.
 
         Args:
             magic (bool): Creates HTML page if False, else
             creates a notebook cell.
+            port (int): Port at which to launch the statistics facet.
         """
         logger.info(
             'Viewing statistics. If magic=False then a new window will open '
@@ -271,7 +277,7 @@ class TrainingPipeline(BasePipeline):
             'attempt will be made to append to the current notebook.')
         uri = self.get_artifacts_uri_by_component(
             GDPComponent.SplitStatistics.name)[0]
-        view_statistics(uri, magic)
+        view_statistics(uri, magic, port)
 
     def view_schema(self):
         """View schema of data flowing in pipeline."""
@@ -279,12 +285,13 @@ class TrainingPipeline(BasePipeline):
             GDPComponent.SplitSchema.name)[0]
         view_schema(uri)
 
-    def evaluate(self, magic: bool = False):
+    def evaluate(self, magic: bool = False, port: int = 0):
         """
         Evaluate pipeline from the evaluator and trainer steps artifact.
 
         Args:
             magic: Creates new window if False, else creates notebook cells.
+            port: At which port to deploy jupyter notebook.
         """
         from zenml.enums import PipelineStatusTypes
         if self.get_status() != PipelineStatusTypes.Succeeded.name:
@@ -308,7 +315,7 @@ class TrainingPipeline(BasePipeline):
             'Evaluating pipeline. If magic=False then a new window will open '
             'up with a notebook for evaluation. If magic=True, then an '
             'attempt will be made to append to the current notebook.')
-        return evaluate_single_pipeline(self, magic=magic)
+        return evaluate_single_pipeline(self, magic=magic, port=port)
 
     def download_model(self, out_path: Text = None, overwrite: bool = False):
         """Download model to out_path"""
@@ -331,7 +338,7 @@ class TrainingPipeline(BasePipeline):
             split_name: name of split to detect anomalies on
         """
         stats_uri = self.get_artifacts_uri_by_component(
-            GDPComponent.SplitStatistics.name)
+            GDPComponent.SplitStatistics.name)[0]
         schema_uri = self.get_artifacts_uri_by_component(
             GDPComponent.SplitSchema.name)[0]
         detect_anomalies(stats_uri, schema_uri, split_name)

@@ -12,7 +12,7 @@
 #  or implied. See the License for the specific language governing
 #  permissions and limitations under the License.
 
-from examples.nlp.training.trainer import UrduTrainer
+from training.trainer import UrduTrainer
 from zenml.datasources import CSVDatasource
 from zenml.exceptions import AlreadyExistsException
 from zenml.pipelines import NLPPipeline
@@ -38,7 +38,7 @@ tokenizer_step = HuggingFaceTokenizerStep(
 nlp_pipeline.add_tokenizer(tokenizer_step=tokenizer_step)
 
 nlp_pipeline.add_split(RandomSplit(
-    split_map={"train": 0.9, "eval": 0.1}))
+    split_map={'train': 0.7, 'eval': 0.2, 'test': 0.1}))
 
 nlp_pipeline.add_trainer(
     UrduTrainer(

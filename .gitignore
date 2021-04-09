@@ -143,3 +143,9 @@ docs/book/_build/
 
 # macOS specific
 .DS_Store
+
+# gitbook
+!.gitbook.yaml
+
+# all rst's
+*.rst

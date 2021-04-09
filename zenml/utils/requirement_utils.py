@@ -51,7 +51,8 @@ CORTEX_REQUIREMENTS = ['cortex==0.29.0']
 # DATASOURCES #
 ###############
 POSTGRES_INTEGRATION = 'postgres'
-POSTGRES_REQUIREMENTS = ['beam-nuggets==0.17.0', 'pg8000==1.16.5']
+POSTGRES_REQUIREMENTS = ['beam-nuggets==0.17.0', 'pg8000==1.16.5',
+                         'sqlalchemy==1.3.22']
 
 #######################
 # NLP via HuggingFace #
@@ -109,3 +110,11 @@ def check_integration(integration):
                 f"{integration} integration not installed. "
                 f"Please install zenml[{integration}] via "
                 f"`pip install zenml[{integration}]`")
+
+
+def list_integrations():
+    """Prints integrations in an easy to read format."""
+    for k, v in EXTRAS_REQUIRE.items():
+        print("*********")
+        print(f"The integration {k} has the following dependencies: {v}")
+        print(f'To install: pip install zenml[{k}]')

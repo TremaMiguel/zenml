@@ -22,8 +22,11 @@ jupyter-book==0.9.1
 matplotlib==3.3.3
 ghp-import==1.0.0
 jedi==0.17.2
+sphinx==3.3.1
+sphinx_bootstrap_theme==0.7.1
 git+https://github.com/maiot-io/sphinx-book-theme.git
-sphinxext-opengraph
+sphinxext-opengraph==0.3.1
+
 
 # cortex
 cortex==0.29.0
@@ -39,3 +42,4 @@ torch==1.7.0
 # Beam nuggets for postgres
 beam-nuggets==0.17.0
 pg8000==1.16.5
+sqlalchemy==1.3.22  # pinning due to `ImportError: cannot import name '_literal_as_text' from 'sqlalchemy.sql.expression' with `from beam_nuggets.io import relational_db`

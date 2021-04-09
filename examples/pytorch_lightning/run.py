@@ -1,10 +1,12 @@
-from examples.pytorch_lightning.step.trainer import MyPyTorchLightningTrainer
+from step.trainer import MyPyTorchLightningTrainer
 from zenml.datasources import CSVDatasource
+from zenml.exceptions import AlreadyExistsException
 from zenml.pipelines import TrainingPipeline
 from zenml.repo import Repository
+from zenml.steps.evaluator import AgnosticEvaluator
 from zenml.steps.preprocesser import StandardPreprocesser
 from zenml.steps.split import RandomSplit
-from zenml.exceptions import AlreadyExistsException
+from zenml.utils import naming_utils
 
 # Define the training pipeline
 training_pipeline = TrainingPipeline()
@@ -20,7 +22,7 @@ training_pipeline.add_datasource(ds)
 
 # Add a split
 training_pipeline.add_split(RandomSplit(
-    split_map={'eval': 0.3, 'train': 0.7}))
+    split_map={'train': 0.7, 'eval': 0.2, 'test': 0.1}))
 
 # Add a preprocessing unit
 training_pipeline.add_preprocesser(
@@ -33,7 +35,19 @@ training_pipeline.add_preprocesser(
     ))
 
 # Add a trainer
-training_pipeline.add_trainer(MyPyTorchLightningTrainer(epoch=100))
+training_pipeline.add_trainer(MyPyTorchLightningTrainer(epochs=10))
+
+# Add an evaluator
+label_name = naming_utils.transformed_label_name('has_diabetes')
+training_pipeline.add_evaluator(
+    AgnosticEvaluator(
+        prediction_key='output',
+        label_key=label_name,
+        slices=[['has_diabetes']],
+        metrics=['mean_squared_error']))
 
 # Run the pipeline locally
 training_pipeline.run()
+
+# Evaluate
+training_pipeline.evaluate()

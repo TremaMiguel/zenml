@@ -26,9 +26,6 @@ CategoricalValue = Union[Text, int]
 
 def lint_split_map(split_map: Dict[Text, float]):
     """Small utility to lint the split_map"""
-    if constants.TRAIN not in split_map.keys():
-        raise AssertionError(f'You have to define some values for '
-                             f'the {constants.TRAIN} split.')
     if len(split_map) <= 1:
         raise AssertionError('Please specify more than 1 split name in the '
                              'split_map!')
@@ -97,8 +94,8 @@ class CategoricalRatioSplit(BaseSplit):
              splitting.
             categories: List of categorical values found in the categorical
              column on which to split.
-            split_ratio: A dict mapping { split_name: percentage of categories
-                                    in split }.
+            split_ratio: A dict mapping { split_name: ratio of categories
+             in split }.
             unknown_category_policy: String, indicates how to handle categories
              in the data that are not present in the supplied category list.
         """

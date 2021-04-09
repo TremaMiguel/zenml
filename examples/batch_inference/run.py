@@ -1,12 +1,13 @@
 from zenml.datasources import CSVDatasource
+from zenml.exceptions import AlreadyExistsException
 from zenml.pipelines import TrainingPipeline, BatchInferencePipeline
 from zenml.repo import Repository
 from zenml.steps.evaluator import TFMAEvaluator
+from zenml.steps.inferrer import TensorflowInferrer
 from zenml.steps.preprocesser import StandardPreprocesser
 from zenml.steps.split import RandomSplit
 from zenml.steps.trainer import TFFeedForwardTrainer
-from zenml.exceptions import AlreadyExistsException
-from zenml.steps.inferrer import TensorflowInferrer
+from zenml.utils.naming_utils import transformed_label_name
 
 # Define the training pipeline
 training_pipeline = TrainingPipeline()
@@ -22,7 +23,7 @@ training_pipeline.add_datasource(ds)
 
 # Add a split
 training_pipeline.add_split(RandomSplit(
-    split_map={'train': 0.7, 'eval': 0.3}))
+    split_map={'train': 0.7, 'eval': 0.2, 'test': 0.1}))
 
 # Add a preprocessing unit
 training_pipeline.add_preprocesser(
@@ -45,8 +46,9 @@ training_pipeline.add_trainer(TFFeedForwardTrainer(
 # Add an evaluator
 training_pipeline.add_evaluator(
     TFMAEvaluator(slices=[['has_diabetes']],
-                  metrics={'has_diabetes': ['binary_crossentropy',
-                                            'binary_accuracy']}))
+                  metrics={transformed_label_name('has_diabetes'): [
+                      'binary_crossentropy',
+                      'binary_accuracy']}))
 
 # Run the pipeline locally
 training_pipeline.run()
@@ -59,7 +61,7 @@ infer_pipeline = BatchInferencePipeline(
 infer_pipeline.add_datasource(ds)
 infer_pipeline.add_infer_step(
     TensorflowInferrer(
-        labels=['has_diabetes'])
+        labels=[transformed_label_name('has_diabetes')])
 )
 infer_pipeline.run()
 df = infer_pipeline.get_predictions()
