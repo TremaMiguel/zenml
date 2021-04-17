@@ -12,9 +12,10 @@
 * [Modifying the split](starter-guide/split.md)
 * [Adding your preprocessing logic](starter-guide/transform.md)
 * [Creating your trainer](starter-guide/trainer.md)
-* [Choosing the evaluation metrics](starter-guide/evaluator.md)
+* [Adding evaluation metrics](starter-guide/evaluator.md)
 * [Deploy your model](starter-guide/deployer.md)
 * [Post-training workflow](starter-guide/post-training.md)
+* [Scaling to the cloud](starter-guide/scaling-to-the-cloud.md)
 
 ## Advanced Guide
 
